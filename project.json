@@ -1,0 +1,30 @@
+{
+  "ProjectName": "SqlQueryEditor",
+  "Description": "A PowerShell WPF (Windows Presentation Framework) application to create, store, and Execute SQL Queries from SQL Database. tables.",
+  "Version": "0.1.0",
+  "CopyMode": "Content",
+  "Manifest": {
+    "Author": "Brooks Vaughn",
+    "PowerShellHostVersion": "5.1",
+    "GUID": "c69b81e5-4e8e-4574-b55e-768cbba792be",
+    "Tags": [
+      "PowerShell",
+      "WPF",
+      "SqlQueryEditor",
+      "SQL",
+      "SQLServer",
+      "DataGrid"
+    ],
+    "ProjectUri": "https://github.com/BrooksV/SqlQueryEditor",
+    "LicenseUri": "https://github.com/BrooksV/SqlQueryEditor/blob/main/LICENSE"
+  },
+  "Pester": {
+    "TestResult": {
+      "Enabled": true,
+      "OutputFormat": "NUnitXml"
+    },
+    "Output": {
+      "Verbosity": "Detailed"
+    }
+  }
+}
