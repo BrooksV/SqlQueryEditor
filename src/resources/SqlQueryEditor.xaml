@@ -2,6 +2,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:system="clr-namespace:System;assembly=mscorlib"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="SqlQueryEditor" Height="800" Width="1200" Topmost="False"
@@ -11,6 +12,8 @@
     Background="AliceBlue" UseLayoutRounding="True">
 
     <Window.Resources>
+        <system:String x:Key="Messages">Messages:</system:String>
+
         <!--
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
         -->
@@ -893,9 +896,6 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                     Background="LightGray" BorderThickness="2" BorderBrush="Gray"
                     SelectedIndex="0" IsSynchronizedWithCurrentItem="True">
 
-            <TabItem x:Name="tbDocumentTree" Tag="0" Header="Document Management" ToolTip="Browsing, Scanning, and Managing Documents">
-                <!-- Add Document Management UI components here -->
-            </TabItem>
             <TabItem x:Name="tbLkUpTableEdit" Tag="1" Header="Data Grid" ToolTip="Edit Data and Lookup Tables">
                 <!-- Add Data Grid UI components here -->
                 <Grid x:Name="TableEditGrid">
@@ -913,7 +913,7 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                     <GridSplitter Name="gridSplitterTableEdit" ShowsPreview="True" Grid.Row="0" Grid.RowSpan="1" Grid.Column="1" Grid.ColumnSpan="1" Margin="0" Padding="0" 
                         ResizeDirection="Auto" Height="Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource NormalBrush}" 
                         Width="6" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="1" FontSize="9" Height="Auto" Text=" « · · · · · · · · » " FontWeight="Black" Foreground="DarkBlue" Background="#BBC5D7" Tag="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="1" FontSize="9" Height="Auto" Text=" ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ " FontWeight="Black" Foreground="DarkBlue" Background="#BBC5D7" Tag="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
                         <TextBlock.LayoutTransform>
                             <RotateTransform Angle="90" />
                         </TextBlock.LayoutTransform> 
@@ -1027,7 +1027,7 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                     <GridSplitter Name="gridSplitter" ShowsPreview="True" Grid.Row="0" Grid.RowSpan="1" Grid.Column="1" Grid.ColumnSpan="1" Margin="0" Padding="0" 
                         ResizeDirection="Auto" Height="Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource NormalBrush}" 
                         Width="6" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="1" FontSize="9" Height="Auto" Text=" « · · · · · · · · » " FontWeight="Black" Foreground="DarkBlue" Background="#BBC5D7" Tag="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="1" FontSize="9" Height="Auto" Text=" ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ " FontWeight="Black" Foreground="DarkBlue" Background="#BBC5D7" Tag="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
                         <TextBlock.LayoutTransform>
                             <RotateTransform Angle="90" />
                         </TextBlock.LayoutTransform> 
@@ -1074,6 +1074,7 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                                                     <MenuItem x:Name="mnuMDelete" Header="Delete"/>
                                                     <MenuItem x:Name="mnuMFirst" Header="First"/>
                                                     <MenuItem x:Name="mnuMPrevious" Header="Previous"/>
+                                                    <MenuItem x:Name="mnuMRefresh" Header="Refresh"/>
                                                     <MenuItem x:Name="mnuMNext" Header="Next"/>
                                                     <MenuItem x:Name="mnuMLast" Header="Last"/>
                                                 </Menu>
@@ -1131,6 +1132,7 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                                                     <MenuItem x:Name="mnuDCancel" Header="Cancel" />
                                                     <MenuItem x:Name="mnuDSave" Header="Save" />
                                                     <MenuItem x:Name="mnuDDelete" Header="Delete" />
+                                                    <MenuItem x:Name="mnuDRefresh" Header="Refresh"/>
                                                 </Menu>
 
                                                 <!-- DataGrid for Detail SqlQueryParms records -->
@@ -1241,6 +1243,17 @@ https://learn.microsoft.com/en-gb/archive/blogs/vinsibal/5-random-gotchas-with-t
                     </Expander>
                     <!-- End of Directory Tree Grid - Left Side of Splitter -->
                 </Grid>
+            </TabItem>
+            <TabItem x:Name="tbMessages" Tag="0" Header="Messages" ToolTip="Browsing, Scanning, and Managing Documents">
+                <ScrollViewer x:Name="_svMessages" Padding="0,0,0,0" ScrollViewer.VerticalScrollBarVisibility="Visible" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <TextBox x:Name="_tbxMessages" Margin="5,2,5,5" Padding="0,0,0,0" FontFamily="Consolas" FontSize="12"
+                        Text="{DynamicResource ResourceKey=Messages}"
+                        ScrollViewer.CanContentScroll="False"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
+                        VerticalContentAlignment="Top"
+                        TextWrapping="WrapWithOverflow" AcceptsReturn="True" Cursor="Arrow"
+                    />
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </Grid>

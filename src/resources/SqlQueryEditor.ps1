@@ -4,10 +4,7 @@
 
 #>
 
-[System.Diagnostics.DebuggerHidden()]
-param()
-
-Write-Warning ($error | Out-String)
+# Write-Warning ($error | Out-String)
 
 #region Initialize Variables and Check STA Mode
 if ([System.Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
@@ -46,9 +43,11 @@ Function Initialize-Module {
     }
 }    
 # Verify required modules are installed and imported
-Initialize-Module -moduleName "SqlQueryClass"
-Initialize-Module -moduleName "GuiMyPS"
-# Import-Module C:\Git\GuiMyPS\dist\GuiMyPS\GuiMyPS.psd1 -Verbose -Force
+# Initialize-Module -moduleName "SqlQueryClass"
+Import-Module C:\Git\SqlQueryClass\dist\SqlQueryClass\SqlQueryClass.psd1 -Force # -Verbose -Force
+
+# Initialize-Module -moduleName "GuiMyPS"
+Import-Module C:\Git\GuiMyPS\dist\GuiMyPS\GuiMyPS.psd1 -Force # -Verbose -Force
 
 # Initialize-Module -moduleName "ModuleTools"
 Import-Module C:\Git\ModuleTools\dist\ModuleTools\ModuleTools.psd1 # -Verbose -Force
@@ -111,6 +110,7 @@ $syncHash.Add('Params', @{
     # ConnectionString = "Server=(localdb)\MSSQLLocalDB;AttachDbFilename=F:\DATA\BILLS\PSSCRIPTS\SCANMYBILLS\DATABASE1.MDF;Integrated Security=True"
     ConnectionString = "Data Source=(localdb)\MSSQLLocalDB;AttachDbFilename=F:\DATA\BILLS\PSSCRIPTS\SCANMYBILLS\DATABASE1.MDF;Integrated Security=True"
     IsRunning = $false
+    width = 999
 })
 $syncHash.Add('UI', [PSCustomObject]@{
     # Set the initial content of the toggle button to reflect Record Edit Mode
@@ -119,6 +119,7 @@ $syncHash.Add('UI', [PSCustomObject]@{
     LeftColumnPreviousWidth = $null
     timer = $null # [System.Windows.Threading.DispatcherTimer]
     IsCurrentDataGridDirty = $false
+    LastSelectedChangeName = $null
 })
 
 # Define EditMode enum
@@ -140,8 +141,7 @@ $syncHash.Form = New-XamlWindow -xaml "$PSScriptRoot\SqlQueryEditor.xaml"
 #region Event handler for Click Events
 $handler_MenuItem_Click = {
     Param ([object]$theSender, [System.EventArgs]$e)
-    Write-Host ("`$handler_menu_Click() Menu Item clicked: {0}" -f $theSender.Name)
-
+    Set-Message -Message ("`$handler_menu_Click() Menu Item clicked: {0}" -f $theSender.Name)
     Switch -Regex ($theSender.Name) {
         # Main Menu
         'mnuExit|mnuExit2' { $syncHash.Form.Close()
@@ -151,54 +151,54 @@ $handler_MenuItem_Click = {
             Break }
         'mnuMExportCopyToClipboard' {
             If ($WPF_dataGridSqlQuery.ItemsSource) {
-                Save-DataGrid -InputObject $WPF_dataGridSqlQuery -SaveAs Clipboard -Verbose
+                Save-DataGridContent -InputObject $WPF_dataGridSqlQuery -SaveAs Clipboard -Verbose
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsClipboard Aborted')
             }
             Break }
         'mnuDExportCopyToClipboard' {
             If ($WPF_dataGridSqlQueryParms.ItemsSource) {
-                Save-DataGrid -InputObject $WPF_dataGridSqlQueryParms -SaveAs Clipboard -Verbose
+                Save-DataGridContent -InputObject $WPF_dataGridSqlQueryParms -SaveAs Clipboard -Verbose
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsClipboard Aborted')
             }
             Break }
-        'mnuMSaveAsCSV' {
+        'mnuMExportAsCSV' {
             If ($WPF_dataGridSqlQuery.ItemsSource) {
-                Save-DataGrid -InputObject $WPF_dataGridSqlQuery -SaveAs CVS -Verbose
+                Save-DataGridContent -InputObject $WPF_dataGridSqlQuery -SaveAs CSV -Path "C:\Temp\dt$($WPF_dataGridSqlQuery.Name).csv"
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsCSV Aborted')
             }
             Break }
-        'mnuDSaveAsCSV' {
+        'mnuDExportAsCSV' {
             If ($WPF_dataGridSqlQueryParms.ItemsSource) {
-                Save-DataGrid -InputObject $WPF_dataGridSqlQueryParms -SaveAs CVS -Verbose
+                Save-DataGridContent -InputObject $WPF_dataGridSqlQueryParms -SaveAs CSV -Verbose
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsCSV Aborted')
             }
             Break }
-        'mnuMSaveAsExcel' {
+        'mnuMExportAsExcel' {
             If ($WPF_dataGridSqlQuery.ItemsSource) {
-                $WPF_dataGridSqlQuery | Save-DataGrid -SaveAs Excel -Verbose
+                $WPF_dataGridSqlQuery | Save-DataGridContent -SaveAs Excel -Verbose
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsExcel Aborted')
             }
             Break }
-        'mnuDSaveAsExcel' {
+        'mnuDExportAsExcel' {
             If ($WPF_dataGridSqlQueryParms.ItemsSource) {
-                $WPF_dataGridSqlQueryParms | Save-DataGrid -SaveAs Excel -Verbose
+                $WPF_dataGridSqlQueryParms | Save-DataGridContent -SaveAs Excel -Verbose
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAsExcel Aborted')
             }
             Break }
-        'mnuMExportAsExcel' { 
+        'mnuMImportFromExcel' { 
             If ($WPF_dataGridSqlQuery.ItemsSource) {
                 $WPF_dataGridSqlQuery.ItemsSource | Save-DatasetToExcel -Path ("{0}\{1}" -f $syncHash.Params.LogFolder, 'SQLQuery_Export.xlsx')
             } Else {
                 Set-Message -Message ('DataGrid cannot be empty. SaveAllToExcel Aborted')
             }
             Break }
-        'mnuDExportAsExcel' { 
+        'mnuDImportFromExcel' { 
             If ($WPF_dataGridSqlQueryParms.ItemsSource) {
                 $WPF_dataGridSqlQueryParms.ItemsSource | Save-DatasetToExcel -Path ("{0}\{1}" -f $syncHash.Params.LogFolder, 'SQLQueryParms_Export.xlsx')
             } Else {
@@ -208,17 +208,12 @@ $handler_MenuItem_Click = {
    
         'mnuMRefresh' {
             $SelectedItem = $WPF_dataGridSqlQuery.SelectedItem
-
             If (-not [String]::IsNullOrEmpty($SelectedItem)) {
                 $WPF_dataGridSqlQuery.SelectedItem = $SelectedItem
                 $WPF_dataGridSqlQuery.ScrollIntoView($WPF_dataGridSqlQuery.SelectedItem)
             }
             $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMEdit','mnuMCancel','mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_dataGridSqlQuery.ItemsSource = $null
-            $WPF_dataGridSqlQuery.Items.Clear()
-            $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQuery']]
-            $WPF_dataGridSqlQuery.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
-            #?# Load-TableData -TableName 'SqlQuery' -DataGrid $WPF_dataGridSqlQuery
+            Sync-EveryDataBinding
             $WPF_dataGridSqlQuery.ScrollIntoView(-1)
             Break }
         'mnuDRefresh' {
@@ -227,12 +222,8 @@ $handler_MenuItem_Click = {
                 $WPF_dataGridSqlQueryParms.SelectedItem = $SelectedItem
                 $WPF_dataGridSqlQueryParms.ScrollIntoView($WPF_dataGridSqlQueryParms.SelectedItem)
             }
-            $WPF_menuDetailDataGrid.Items.Where({$_.Name -in @('mnuMEdit','mnuMCancel','mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_dataGridSqlQueryParms.ItemsSource = $null
-            $WPF_dataGridSqlQueryParms.Items.Clear()
-            $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQueryParms']]
-            $WPF_dataGridSqlQueryParms.ItemsSource = $tableD.Result[0].Tables[0].DefaultView
-            # Load-TableData -TableName 'SqlQueryParms' -DataGrid $WPF_dataGridSqlQueryParms
+            $WPF_menuDetailDataGrid.Items.Where({$_.Name -in @('mnuDEdit','mnuDCancel','mnuDSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
+            Sync-EveryDataBinding
             $WPF_dataGridSqlQueryParms.ScrollIntoView(-1)
             Break }
         'mnuMFirst' {
@@ -299,6 +290,17 @@ $handler_MenuItem_Click = {
             $WPF_dataGridSqlQuery.SelectedItem = $WPF_dataGridSqlQuery.ItemsSource.AddNew()
             $WPF_dataGridSqlQuery.ScrollIntoView($WPF_dataGridSqlQuery.SelectedItem)
             Break }
+        'mnuNew' {
+            $syncHash.UI.SqlResults.TableIndex = $syncHash.UI.SqlResults.TableNames['SqlQuery']
+            $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableIndex]
+            $tableM.IsDirty = $true
+            $WPF_dataGridSqlQuery.SelectedItem = $WPF_dataGridSqlQuery.ItemsSource.AddNew()
+            $WPF_dataGridSqlQuery.SelectedItem.DataSource = 'SqlQuery'
+            $WPF_dataGridSqlQuery.SelectedItem.Name = 'All Sorted'
+            $WPF_dataGridSqlQuery.SelectedItem.Description = 'Selects All Records Sorted by Date'
+            $WPF_dataGridSqlQuery.SelectedItem.SqlFormat = 'SELECT * FROM [dbo].SqlQuery ORDER BY {0} DESC;'
+            $WPF_dataGridSqlQuery.ScrollIntoView($WPF_dataGridSqlQuery.SelectedItem)
+            Break }
         'mnuDAdd' {
             $WPF_dataGridSqlQueryParms.SelectedItem = $WPF_dataGridSqlQueryParms.ItemsSource.AddNew()
             $WPF_dataGridSqlQueryParms.ScrollIntoView($WPF_dataGridSqlQueryParms.SelectedItem)
@@ -325,60 +327,87 @@ $handler_MenuItem_Click = {
             # Reset MenuItems when Data is Refreshed
             # 'mnuFirst','mnuLast','mnuPrevious','mnuNext','mnuEdit','mnuCancel.Tag','mnuSave','mnuDelete'
             $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMEdit','mnuMCancel','mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_dataGridSqlQuery.ItemsSource = $null
-            $WPF_dataGridSqlQuery.Items.Clear()
-            $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQuery']]
-            $WPF_dataGridSqlQuery.ItemsSource = $tableM.Result[0].Tables[0].DefaultView            
-            #?# Load-TableData -TableName 'SqlQuery' -DataGrid $WPF_dataGridSqlQuery
+            Sync-EveryDataBinding
             $WPF_dataGridSqlQuery.ScrollIntoView(-1)
             Break }
         'mnuDCancel' {
             # Reset MenuItems when Data is Refreshed
             # 'mnuFirst','mnuLast','mnuPrevious','mnuNext','mnuEdit','mnuCancel.Tag','mnuSave','mnuDelete'
             $WPF_menuDetailDataGrid.Items.Where({$_.Name -in @('mnuDEdit','mnuDCancel','mnuDSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_dataGridSqlQueryParms.ItemsSource = $null
-            $WPF_dataGridSqlQueryParms.Items.Clear()
-            $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQueryParms']]
-            $WPF_dataGridSqlQueryParms.ItemsSource = $tableD.Result[0].Tables[0].DefaultView
-            #?# Load-TableData -TableName 'SqlQueryParms' -DataGrid $WPF_dataGridSqlQueryParms
+            Sync-EveryDataBinding
             $WPF_dataGridSqlQueryParms.ScrollIntoView(-1)
             Break }
         'mnuMSave' {
-            # Write-Host ('`$syncHash.UI.currentDataGrid.SelectedIndex: {0}' -f $syncHash.UI.currentDataGrid.SelectedIndex)
-            # Write-Host ('`$syncHash.UI.rowBeingEdited: {0}' -f ($syncHash.UI.rowBeingEdited | Select-Object -Property * | Out-String))
-            # $selectedRow = Get-Row -index $syncHash.UI.currentDataGrid.SelectedIndex
-            # Write-Host ('`$selectedRow: {0}' -f $selectedRow.Item)
-            # Set-Message -Message ('DataSet Has Changes: {0}' -f ($syncHash.UI.currentDataTable.Result.HasChanges()))
-            # Set-Message -Message ('Committing Changes: {0}' -f ($syncHash.UI.currentDataGrid.CommitEdit()))
-            $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQuery']]
-            $WPF_dataGridSqlQuery.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
-            #?# Save-SqlData -TableName 'SqlQuery' -DataGrid $syncHash.UI.SqlResults
+            # Commit edits at the row level
+            $WPF_dataGridSqlQuery.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true)
+            # Retrieve DataSet / DataTable
+            $syncHash.UI.SqlResults.TableIndex = $syncHash.UI.SqlResults.TableNames['SqlQuery']
+            $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableIndex]
+
+            Write-Host ('`$WPF_dataGridSqlQuery.SelectedIndex: {0}' -f $WPF_dataGridSqlQuery.SelectedIndex)
+            Write-Host ('$tableM.Result[0] DataSet Has Changes: {0}' -f ($tableM.Result[0].HasChanges()))
+            Write-Host ('$WPF_dataGridSqlQuery Committing Changes: {0}' -f ($WPF_dataGridSqlQuery.CommitEdit()))
+            If (-not $tableM.IsDirty) {
+                Write-Host ("Will Save changes even though No changes were made to DataGrid: {0}" -f $WPF_dataGridSqlQuery.Name)
+            } Else {
+                Write-Host ("Saving Changes made to DataGrid: {0}" -f $WPF_dataGridSqlQuery.Name)
+            }
+
+            Try {
+                $syncHash.UI.SqlResults.SaveChanges()
+            } Catch {
+                Write-Host ("Save() Error: ({0})" -f ($error[0] | Out-String).TrimEnd()) -ForegroundColor Red
+            } Finally {
+                Sync-EveryDataBinding
+            }
+            # Reset MenuItems when Data is Refreshed
+            $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMDelete','mnuMEdit','mnuMCancel','mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})            
             Break }
         'mnuDSave' {
-            # Write-Host ('`$syncHash.UI.currentDataGrid.SelectedIndex: {0}' -f $syncHash.UI.currentDataGrid.SelectedIndex)
-            # Write-Host ('`$syncHash.UI.rowBeingEdited: {0}' -f ($syncHash.UI.rowBeingEdited | Select-Object -Property * | Out-String))
-            # $selectedRow = Get-Row -index $syncHash.UI.currentDataGrid.SelectedIndex
-            # Write-Host ('`$selectedRow: {0}' -f $selectedRow.Item)
-            # Set-Message -Message ('DataSet Has Changes: {0}' -f ($syncHash.UI.currentDataTable.Result.HasChanges()))
-            # Set-Message -Message ('Committing Changes: {0}' -f ($syncHash.UI.currentDataGrid.CommitEdit()))
+            # Commit edits at the row level
+            $WPF_dataGridSqlQueryParms.CommitEdit([System.Windows.Controls.DataGridEditingUnit]::Row, $true)
+            # Retrieve DataSet / DataTable
+            $syncHash.UI.SqlResults.TableIndex = $syncHash.UI.SqlResults.TableNames['SqlQueryParms']
+            $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableIndex]
 
-            $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQueryParms']]
-            $WPF_dataGridSqlQueryParms.ItemsSource = $tableD.Result[0].Tables[0].DefaultView
+            Write-Host ('`$WPF_dataGridSqlQueryParms.SelectedIndex: {0}' -f $WPF_dataGridSqlQueryParms.SelectedIndex)
+            Write-Host ('$tableM.Result[0] DataSet Has Changes: {0}' -f ($tableD.Result[0].HasChanges()))
+            Write-Host ('$WPF_dataGridSqlQueryParms Committing Changes: {0}' -f ($WPF_dataGridSqlQueryParms.CommitEdit()))
+            If (-not $tableD.IsDirty) {
+                Write-Host ("Will Save changes even though No changes were made to DataGrid: {0}" -f $WPF_dataGridSqlQueryParms.Name)
+            } Else {
+                Write-Host ("Saving Changes made to DataGrid: {0}" -f $WPF_dataGridSqlQueryParms.Name)
+            }
 
-            #?# Save-SqlData -TableName 'SqlQueryParms' -DataGrid $syncHash.DetailData
-            
+            Try {
+                $syncHash.UI.SqlResults.SaveChanges()
+            } Catch {
+                Write-Host ("Save() Error: ({0})" -f ($error[0] | Out-String).TrimEnd()) -ForegroundColor Red
+            } Finally {
+                Sync-EveryDataBinding
+            }
+            # Reset MenuItems when Data is Refreshed
+            $WPF_menuDetailDataGridParms.Items.Where({$_.Name -in @('mnuMDelete','mnuMEdit','mnuMCancel','mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})            
             Break }
         'mnuMDelete' {
-            #?# $WPF_menuMasterDataGrid.SelectedItem.Delete()
-            $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMDelete','mnuMEdit')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Enabled -as [Int]).ToString()})
-            $syncHash.UI.IsCurrentDataGridDirty = $true
+            If ((New-Popup -Buttons YesNo -Icon Question -message "Is it okay to delete this record?" -title 'Okay to Delete') -eq 6) {
+                $syncHash.UI.SqlResults.TableIndex = $syncHash.UI.SqlResults.TableNames['SqlQuery']
+                $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableIndex]
+                $WPF_dataGridSqlQuery.SelectedItem.Delete()
+                $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMDelete','mnuMEdit')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
+                $WPF_menuMasterDataGrid.Items.Where({$_.Name -in @('mnuMSave')}).ForEach({$_.Tag = ([MenuItemMode]::Enabled -as [Int]).ToString()})
+                $tableM.IsDirty = $true
+            }
             Break }
         'mnuDDelete' {
-            #?# $WPF_menuMasterDataGridParms.SelectedItem.Delete()
-            $WPF_menuDetailDataGridParms.Items.Where({$_.Name -in @('mnuDDelete','mnuDEdit')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
-            $WPF_menuDetailDataGridParms.Items.Where({$_.Name -in @('mnuDSave')}).ForEach({$_.Tag = ([MenuItemMode]::Enabled -as [Int]).ToString()})
-            $syncHash.UI.IsCurrentDataGridDirty = $true
+            If ((New-Popup -Buttons YesNo -Icon Question -message "Is it okay to delete this record?" -title 'Okay to Delete') -eq 6) {
+                $syncHash.UI.SqlResults.TableIndex = $syncHash.UI.SqlResults.TableNames['SqlQueryParms']
+                $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableIndex]
+                $WPF_dataGridSqlQueryParms.SelectedItem.Delete()
+                $WPF_menuDetailDataGridParms.Items.Where({$_.Name -in @('mnuDDelete','mnuDEdit')}).ForEach({$_.Tag = ([MenuItemMode]::Disabled -as [Int]).ToString()})
+                $WPF_menuDetailDataGridParms.Items.Where({$_.Name -in @('mnuDSave')}).ForEach({$_.Tag = ([MenuItemMode]::Enabled -as [Int]).ToString()})
+                $tableD.IsDirty = $true
+            }
             Break }
         default {
             Write-Host ("{0}: {1}({2})" -f $theSender.Name, $e.OriginalSource.Name, $e.OriginalSource.ToString())
@@ -400,7 +429,7 @@ $elements.ForEach({$_.Element.Add_Click($handler_MenuItem_Click)})
 
 $handler_toggleEditMode = {
     param([object]$theSender, [System.Windows.RoutedEventArgs]$e)
-    Write-Host ("`$handler_toggleEditMode() {0}: ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim() -ForegroundColor Yellow
+    Write-Verbose ("`$handler_toggleEditMode() {0}: ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim() 
     If ($syncHash.UI.EditMode -eq [EditMode]::Table) {
         $syncHash.UI.EditMode = [EditMode]::Record
         $WPF_toggleEditMode.Content = "Record Edit Mode - Click for Table Mode"
@@ -414,47 +443,57 @@ $WPF_toggleEditMode.add_Unchecked($handler_toggleEditMode)
 
 # $WPF_dataGrid.ItemsSource = $syncHash.UI.SqlResults.Tables[0].Result.DefaultView
 
-    # Event handler for LeftSide Expander Collapsed
-    $WPF_expLeftSide.add_Collapsed({
-        # Save the current width
-        $syncHash.UI.LeftColumnPreviousWidth = $WPF_LeftColumn.Width
-        $WPF_LeftColumn.Width = [System.Windows.GridLength]::Auto
-    })
+# Event handler for LeftSide Expander Collapsed
+$WPF_expLeftSide.add_Collapsed({
+    # Save the current width
+    $syncHash.UI.LeftColumnPreviousWidth = $WPF_LeftColumn.Width
+    $WPF_LeftColumn.Width = [System.Windows.GridLength]::Auto
+})
 
-    # Event handler for LeftSide Expander Expanded
-    $WPF_expLeftSide.add_Expanded({
-        $WPF_LeftColumn.Width = $syncHash.UI.LeftColumnPreviousWidth
-    })
+# Event handler for LeftSide Expander Expanded
+$WPF_expLeftSide.add_Expanded({
+    $WPF_LeftColumn.Width = $syncHash.UI.LeftColumnPreviousWidth
+})
 
-    # Event handler for LeftSide Expander Collapsed
-    $WPF_expSelectQueryGrid.add_Collapsed({
-        # Save the current width
-        $syncHash.UI.LeftColumnPreviousWidth = $WPF_LeftColumnM.Width
-        $WPF_LeftColumnM.Width = [System.Windows.GridLength]::Auto
-    })
+# Event handler for LeftSide Expander Collapsed
+$WPF_expSelectQueryGrid.add_Collapsed({
+    # Save the current width
+    $syncHash.UI.LeftColumnPreviousWidth = $WPF_LeftColumnM.Width
+    $WPF_LeftColumnM.Width = [System.Windows.GridLength]::Auto
+})
 
-    # Event handler for LeftSide Expander Expanded
-    $WPF_expSelectQueryGrid.add_Expanded({
-        $WPF_LeftColumnM.Width = $syncHash.UI.LeftColumnPreviousWidth
-    })
+# Event handler for LeftSide Expander Expanded
+$WPF_expSelectQueryGrid.add_Expanded({
+    $WPF_LeftColumnM.Width = $syncHash.UI.LeftColumnPreviousWidth
+})
     
 #endregion
 
 #region Helper Functions
-Write-Host "Helper Functions were Moved to SqlQueryEditor Module"
-Write-Host "Data Management Functions were Moved to SqlQueryEditor Module"
-Write-Host (((Get-Command -Module "$($projectData.ProjectName)" -Syntax) -split [System.Environment]::NewLine).Where({-not [String]::IsNullOrWhiteSpace($_)}).ForEach({'- {0}' -f $_}) | Out-String).TrimEnd()
+# Write-Host "Helper Functions were Moved to SqlQueryEditor Module"
+# Write-Host "Data Management Functions were Moved to SqlQueryEditor Module"
+# Write-Host (((Get-Command -Module "$($projectData.ProjectName)" -Syntax) -split [System.Environment]::NewLine).Where({-not [String]::IsNullOrWhiteSpace($_)}).ForEach({'- {0}' -f $_}) | Out-String).TrimEnd()
 #endregion
 
 # Display all $WPF_* named variables which were automatically created from XAML element names that have a preceding "_" in their name
-Get-FormVariable
+Set-Message -Message (Get-FormVariable | Out-String -Width $syncHash.Params.width).TrimEnd() -NewlineBefore
+Set-Message -Message ("`$projectData: $($projectData | Out-String -Width $syncHash.Params.width)").TrimEnd() -NewlineBefore
+Set-Message -Message ("`$syncHash: $($syncHash | Out-String -Width $syncHash.Params.width)").TrimEnd() -NewlineBefore
+Set-Message -Message ("`$syncHash.Params: $($syncHash.Params | Out-String -Width $syncHash.Params.width)").TrimEnd() -NewlineBefore
+Set-Message -Message ("`$syncHash.UI: $($syncHash.UI | Out-String -Width $syncHash.Params.width)").TrimEnd() -NewlineBefore
 
 #region Event handlers for UI components 
 
 # Event handler for TreeView selection changed
 $WPF_treeViewSqlQueries.add_SelectedItemChanged({
     Param ($theSender, $e)
+
+    If ($syncHash.UI.LastSelectedChangeName -eq '_dataGridSqlQuery') {
+        $syncHash.UI.LastSelectedChangeName = $e.Source.Name
+        Return
+    }
     Write-Verbose ("`$WPF_treeViewSqlQueries.add_SelectedItemChanged(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
+
     $selectedItem = $WPF_treeViewSqlQueries.SelectedItem
     if ($selectedItem) {
         if ($syncHash.UI.EditMode -eq [EditMode]::Record) {
@@ -478,7 +517,7 @@ $WPF_treeViewSqlQueries.add_SelectedItemChanged({
             $dataView.RowFilter = "Id = $($selectedItem.Parm_Id)"
     
             # ForEach ($row in $dataView) {Write-Host ($row | FT -AutoSize | Out-String).Trim()}
-            Write-Host ($dataView | Format-Table -AutoSize | Out-String).Trim()
+            # Write-Host ($dataView | Format-Table -AutoSize | Out-String).Trim()
             $WPF_dataGridSqlQueryParms.ItemsSource = $dataView
         } else {
             # Table Edit Mode logic
@@ -495,22 +534,46 @@ $WPF_treeViewSqlQueries.add_SelectedItemChanged({
 # Event handler for TabControl selection changed
 $WPF_tabControl.add_SelectionChanged({
     Param ([object]$theSender, [System.Windows.Controls.SelectionChangedEventArgs]$e)
-    Write-Verbose ("`$WPF_tabControl.add_SelectionChanged(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
+
+    If ($syncHash.UI.LastSelectedChangeName -eq '_treeViewSqlQueries') {
+        $syncHash.UI.LastSelectedChangeName = $e.Source.Name
+        Return
+    }
+
     $selectedTab = $WPF_tabControl.SelectedItem
-    Write-Host "`$WPF_TabControl selection changed. Selected tab: ($($selectedTab.Header))"
-    
-    # Log details of the selected tab
-    if ($selectedTab.Header -eq "SQLQuery Editor") {
-        Write-Host "Selected SQLQuery Editor tab. Checking elements..."
-        
-        if (-not $WPF_dataGridSqlQuery) {
-            Write-Error "`$WPF_dataGridSqlQuery is null."
+
+    Switch ($e.OriginalSource.GetType().ToString()) {
+        'System.Windows.Controls.TabControl' {
+            Set-Message -Message "`$WPF_tabControl.add_SelectionChanged() [$($selectedTab.GetType().ToString())]. Selected tab: ($($selectedTab.Header))"
+            Break
         }
-        if (-not $WPF_dataGridSqlQueryParms) {
-            Write-Error "`$WPF_dataGridSqlQueryParms is null."
+        'System.Windows.Controls.DataGrid' {
+            If ($e.Source.Name -eq '_dataGridSqlQuery') {
+                $selectedItem = $e.Source.SelectedItem
+                ForEach ($treeItem in $WPF_treeViewSqlQueries.Items) {
+                    If ($treeItem.ToString() -eq '{NewItemPlaceholder}') { # -or [String]::IsNullOrEmpty($treeItem.Id)
+                        Continue
+                    }
+                    If ($treeItem.Id -and $treeItem.Id -eq $selectedItem.Id) {
+                        $treeViewItem = [System.Windows.Controls.TreeViewItem]$WPF_treeViewSqlQueries.ItemContainerGenerator.ContainerFromItem($treeItem)
+                        $treeViewItem.IsSelected = $true
+                        $treeViewItem.Focus()
+                        $treeViewItem.BringIntoView()
+                        Break
+                    }
+                }
+                #>
+            } ElseIf ($e.Source.Name -eq '_dataGrid') {
+                Break
+            } Else {
+                Write-Host ("`$WPF_tabControl.add_SelectionChanged({0}): SourceName ({1}) ({2})" -f $theSender.Name, $e.Source.Name, ($e | Format-List | Out-String)).TrimEnd() -ForegroundColor Magenta
+            }
+            Break
         }
-        if (-not $WPF_toggleEditMode) {
-            Write-Error "`$WPF_toggleEditMode is null."
+        Default {
+            # Write-Host ("`$WPF_tabControl.add_SelectionChanged({0}): SourceName ({1}) ({2})" -f $theSender.Name, $e.Source.Name, ($e | Format-List | Out-String)).TrimEnd() -ForegroundColor Blue
+            Set-Message -Message ("`$WPF_tabControl.add_SelectionChanged([{0}]): Sender ({1}), SourceName ({2}) ({3})" -f $selectedTab.GetType().ToString(), $theSender.Name, $e.Source.Name, ($e | Format-List | Out-String)).TrimEnd()
+            Break
         }
     }
 })
@@ -518,11 +581,45 @@ $WPF_tabControl.add_SelectionChanged({
 
 #region Form Initialization 
 
+Function Sync-EveryDataBinding {
+    Param ()
+    Set-Message -Message ("`Sync-EveryDataBinding()")
+    If ([String]::IsNullOrEmpty($syncHash.UI.SqlResults)) {
+        $syncHash.UI.SqlResults = New-SqlQueryDataSet -DisplayResults $false -ConnectionString $syncHash.Params.ConnectionString
+    }
+    # Load Master Data
+    $tableIndex = $syncHash.UI.SqlResults.TableNames['SqlQuery']
+    If ($null -eq $tableIndex) {
+        $tableIndex = $syncHash.UI.SqlResults.AddQuery('SqlQuery','SELECT * FROM [dbo].[SqlQuery]')
+    }
+    $tableM = $syncHash.UI.SqlResults.Tables[$tableIndex]
+    $tableM.ResultType = 'DataAdapter'
+    $syncHash.UI.SqlResults.Execute($tableM)
+    $tableM.IsDirty = $false
+    Write-Verbose ($tableM | Out-String).TrimEnd()
+    $WPF_treeViewSqlQueries.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
+    $WPF_dataGridSqlQuery.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
+    $WPF_dataGrid.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
+
+    # Load Detail Data
+    $tableIndex = $syncHash.UI.SqlResults.TableNames['SqlQueryParam']
+    If ($null -eq $tableIndex) {
+        $tableIndex = $syncHash.UI.SqlResults.AddQuery('SqlQueryParms','SELECT * FROM [dbo].[SqlQueryParms]')
+    }
+    $tableD = $syncHash.UI.SqlResults.Tables[$tableIndex]
+    $tableD.ResultType = 'DataAdapter'
+    $syncHash.UI.SqlResults.Execute($tableD)
+    $tableD.IsDirty = $false
+    Write-Verbose ($tableD | Out-String).TrimEnd()
+    $WPF_dataGridSqlQueryParms.ItemsSource = $tableD.Result[0].Tables[0].DefaultView
+}
+
 # Event handler for ContentRendered
 $syncHash.Form.Add_ContentRendered({
     Param ([object]$theSender, [System.EventArgs]$e)
-    Write-Host "`$syncHash.Form.Add_ContentRendered()"
-    Write-Verbose ("`$syncHash.Form.Add_ContentRendered(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
+    # Write-Host "`$syncHash.Form.Add_ContentRendered()"
+    # Write-Verbose ("`$syncHash.Form.Add_ContentRendered(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
+    Set-Message -Message ("`$syncHash.Form.Add_ContentRendered(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim() -NewlineBefore
 
     # XAML Element Names beginning with underscore _ are auto-converted to Variables with $WPF_ prefix by the Load and Process XAML code region
     # $WPF_treeViewSqlQueries = $syncHash.Form.FindName("treeViewSqlQueries")
@@ -537,32 +634,13 @@ $syncHash.Form.Add_ContentRendered({
 
     # Use the `New-SqlQueryDataSet` function to create and initialize the `SqlQueryDataSet` instance.
     $syncHash.UI.SqlResults = New-SqlQueryDataSet -DisplayResults $false -ConnectionString $syncHash.Params.ConnectionString
-
-    # Load Master Data
-    $syncHash.UI.SqlResults.AddQuery('SqlQuery','SELECT * FROM [dbo].[SqlQuery]')
-    $tableM = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQuery']]
-    $tableM.ResultType = 'DataAdapter'
-    $syncHash.UI.SqlResults.Execute($tableM)
-    Write-Host ($tableM | Out-String) -ForegroundColor Blue
-    $WPF_treeViewSqlQueries.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
-    $WPF_dataGridSqlQuery.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
-
-    $WPF_dataGrid.ItemsSource = $tableM.Result[0].Tables[0].DefaultView
-
-    # Load Detail Data
-    $syncHash.UI.SqlResults.AddQuery('SqlQueryParms','SELECT * FROM [dbo].[SqlQueryParms]')
-    # $tableD = $syncHash.UI.SqlResults[$syncHash.UI.SqlResults.TableIndex]
-    $tableD = $syncHash.UI.SqlResults.Tables[$syncHash.UI.SqlResults.TableNames['SqlQueryParms']]
-    $tableD.ResultType = 'DataAdapter'
-    $syncHash.UI.SqlResults.Execute($tableD)
-    Write-Host ($tableD | Out-String) -ForegroundColor Blue
-    $WPF_dataGridSqlQueryParms.ItemsSource = $tableD.Result[0].Tables[0].DefaultView
+    Sync-EveryDataBinding
 })
 #endregion
 
 # Event handler for SourceInitialized
 $syncHash.Form.Add_SourceInitialized({
-    Write-Host "Form Source Initialized"
+    Set-Message -Message ("`$syncHash.Form.Add_SourceInitialized() Form Source Initialized: {0}" -f $theSender.Name) -NewlineBefore
     $syncHash.UI.timer = [System.Windows.Threading.DispatcherTimer]::new()
     $syncHash.UI.timer.Interval = [TimeSpan]"0:0:0.150"
     $syncHash.UI.timer.Add_Tick({
@@ -579,10 +657,19 @@ $syncHash.Form.Add_SourceInitialized({
 
 #region Form Closing and Cleanup
 # Event handler for Closing
+# Use Register-ObjectEvent to handle the window's Closing event
+<# # >
+Register-ObjectEvent -InputObject $syncHash.Form -EventName 'Closing' -Action {
+    param($theSender, $e)
+    # Ensure any cleanup actions are performed before the window is closed
+    Write-Host "Window is closing. Cleaning up resources."
+    # Additional cleanup code can be added here if needed
+}
+#>
+
 $syncHash.Form.Add_Closing({
     Param ([object]$theSender, [System.ComponentModel.CancelEventArgs]$e)
-    Write-Verbose ("`$syncHash.Form.Add_Closing(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
-    Write-Host "Form Closing"
+    Write-Host ("`$syncHash.Form.Add_Closing({0}): ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
     # Check DataGrids for unsaved edits and close connections
     $syncHash.Running = $false
     $syncHash.UI.timer.Stop()
@@ -598,21 +685,27 @@ $syncHash.Form.Add_Closing({
 # Event handler for Closed
 $syncHash.Form.Add_Closed({
     Param ([object]$theSender, [System.EventArgs]$e)
-    Write-Verbose ("`$syncHash.Form.Add_Closed(): {0} ({1})" -f $theSender.Name, ($e | Format-List | Out-String)).Trim()
-    Write-Host "Form Closed"
-    $syncHash.Running = $false
-    $syncHash.Params.IsRunning = $false
-    Stop-Transcript
+    Try {
+        Write-Host ("`$syncHash.Form.Add_Closed($($theSender.Name)) Cleaning up resources`n$($e | Format-List | Out-String)").Trim()
+        $syncHash.Running = $false
+        $syncHash.Params.IsRunning = $false
+        Stop-Transcript
+    } Catch {
+        Write-Warning "An error occurred while handling the Closing event: $_"
+    } Finally {
+        Write-Host ("`$syncHash.Form.Add_Closed()")
+    }
 })
 #endregion
 
 # Set the TabControl to display tbSelection
-Write-Host "Setting initial UI Component Defaults before Showing Form"
-$WPF_tabControl.SelectedIndex = 2
+Set-Message -Message "Setting initial UI Component Defaults before Showing Form" -NewlineBefore
+$WPF_tabControl.SelectedIndex = 1
 
 #region Display the Form
 # Due to some bizarre bug with ShowDialog and xaml we need to invoke this asynchronously to prevent a segfault
 $async = $syncHash.Form.Dispatcher.InvokeAsync({
+    Write-Host "`$syncHash.Form.ShowDialog()"
     $syncHash.Form.ShowDialog() | Out-Null
     $syncHash.Error = $Error 
 })
